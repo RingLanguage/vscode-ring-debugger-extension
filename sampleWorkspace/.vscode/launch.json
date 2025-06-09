@@ -5,53 +5,35 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
-			"type": "ring-debugger",
-			"request": "launch",
-			"name": "Ask for file name",
-			"program": "${workspaceFolder}/function-009.ring",
-			"stopOnEntry": true,
-			"debugServer": 4711
-		},
-		{
-			"type": "mock-lizhenhu",
-			"request": "launch",
-			"name": "Debug readme.md",
-			"program": "${workspaceFolder}/readme.md",
-			"stopOnEntry": true,
-			"debugServer": 4711
-		},
-		{
-			"type": "ring-debugger",
-			"request": "launch",
-			"name": "Run Ring Attach Server",
-			"program": "${workspaceFolder}/global-variable-000.ring",
-			"stopOnEntry": true,
-			"debugServer": 4711
-		},
-		{
-			"type": "ring-debugger",
-			"request": "launch",
-			"name": "Run Ring New Server",
-			"program": "${workspaceFolder}/global-variable-000.ring",
-			"stopOnEntry": true
-		},
-		{
-			// 已经发布的 Ring Debugger 扩展
-			"type": "ring-debugger",
-			"request": "launch",
-			"name": "Run Ring(use published ring-debugger)",
-			"program": "/Users/lizhenhu/Desktop/Ring/test/008-class/class-000.ring",
-			"stopOnEntry": true,
-			"trace": true,  // 启用详细跟踪
-      		"outputCapture": "std"  // 捕获 stdout/stderr
-		},
-		{
 			"type": "mock",
 			"request": "attach",
 			"name": "Attach readme.md",
 			"program": "${workspaceFolder}/readme.md",
 			"stopOnEntry": true,
 			"trace": false
+		},
+		{
+			"type": "mock-lizhenhu",
+			"request": "launch",
+			"name": "[mock-lizhenhu]Debug readme.md",
+			"program": "${workspaceFolder}/readme.md",
+			"stopOnEntry": true,
+			"debugServer": 4711
+		},
+		{
+			"type": "ring-debugger",
+			"request": "launch",
+			"name": "[ring-debugger]Run Ring Attach Server",
+			"program": "${workspaceFolder}/function-000.ring",
+			"stopOnEntry": true,
+			"debugServer": 4711
+		},
+		{
+			"type": "ring-debugger",
+			"request": "launch",
+			"name": "[ring-debugger]Run Ring New Server",
+			"program": "${workspaceFolder}/global-variable-000.ring",
+			"stopOnEntry": true
 		}
 	]
 }
