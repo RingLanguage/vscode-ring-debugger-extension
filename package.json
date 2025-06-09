@@ -1,11 +1,11 @@
 {
-  "name": "mock-debug",
-  "displayName": "Mock Debug",
-  "version": "0.52.0",
-  "publisher": "ms-vscode",
-  "description": "Starter extension for developing debug adapters for VS Code.",
+  "name": "ring-debugger",
+  "displayName": "Ring Debugger",
+  "version": "0.52.3",
+  "publisher": "RingLanguage",
+  "description": "Ring-Language debug adapters for VS Code.",
   "author": {
-    "name": "Microsoft Corporation"
+    "name": "GeneralSandman"
   },
   "license": "MIT",
   "keywords": [
@@ -14,17 +14,17 @@
   "engines": {
     "vscode": "^1.66.0"
   },
-  "icon": "images/mock-debug-icon.png",
+  "icon": "images/ring-debugger-icon.png",
   "categories": [
     "Debuggers"
   ],
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/Microsoft/vscode-mock-debug.git"
+    "url": "https://github.com/RingLanguage/vscode-ring-debugger-extension.git"
   },
   "bugs": {
-    "url": "https://github.com/Microsoft/vscode-mock-debug/issues"
+    "url": "https://github.com/RingLanguage/vscode-ring-debugger-extension/issues"
   },
   "scripts": {
     "compile": "tsc -p ./",
@@ -32,7 +32,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "esbuild-base": "esbuild ./src/extension.ts --bundle --tsconfig=./tsconfig.json --external:vscode --format=cjs --platform=node --outfile=dist/extension.js",
     "watch": "npm run -S esbuild-base -- --sourcemap --sources-content=false --watch",
-    "esbuild-web": "esbuild ./src/web-extension.ts --bundle --tsconfig=./tsconfig.json --external:vscode --format=cjs --platform=browser --outfile=dist/web-extension.js",
+    "esbuild-web": "esbuild ./src/web-extension.ts --bundle --tsconfig=./tsconfig.json --external:vscode --format=cjs --platform=node --outfile=dist/web-extension.js",
     "watch-web": "npm run -S esbuild-web -- --sourcemap --sources-content=false --watch",
     "build": "npm run -S esbuild-base -- --sourcemap --sources-content=false && npm run -S esbuild-web -- --sourcemap --sources-content=false",
     "package": "vsce package",
@@ -66,9 +66,9 @@
   "main": "./dist/extension.js",
   "browser": "./dist/web-extension.js",
   "activationEvents": [
-    "onDebugResolve:mock",
-    "onDebugDynamicConfigurations:mock",
-    "onCommand:extension.mock-debug.getProgramName"
+    "onDebugResolve:ring-debugger",
+    "onDebugDynamicConfigurations:ring-debugger",
+    "onCommand:extension.ring-debugger.getProgramName"
   ],
   "workspaceTrust": {
     "request": "never"
@@ -77,50 +77,50 @@
     "menus": {
       "editor/title/run": [
         {
-          "command": "extension.mock-debug.runEditorContents",
+          "command": "extension.ring-debugger.runEditorContents",
           "when": "resourceLangId == markdown",
           "group": "navigation@1"
         },
         {
-          "command": "extension.mock-debug.debugEditorContents",
+          "command": "extension.ring-debugger.debugEditorContents",
           "when": "resourceLangId == markdown",
           "group": "navigation@2"
         }
       ],
       "commandPalette": [
         {
-          "command": "extension.mock-debug.debugEditorContents",
+          "command": "extension.ring-debugger.debugEditorContents",
           "when": "resourceLangId == markdown"
         },
         {
-          "command": "extension.mock-debug.runEditorContents",
+          "command": "extension.ring-debugger.runEditorContents",
           "when": "resourceLangId == markdown"
         }
       ],
       "debug/variables/context": [
         {
-          "command": "extension.mock-debug.toggleFormatting",
-          "when": "debugType == 'mock' && debugProtocolVariableMenuContext == 'simple'"
+          "command": "extension.ring-debugger.toggleFormatting",
+          "when": "debugType == 'ring-debugger' && debugProtocolVariableMenuContext == 'simple'"
         }
       ]
     },
     "commands": [
       {
-        "command": "extension.mock-debug.debugEditorContents",
+        "command": "extension.ring-debugger.debugEditorContents",
         "title": "Debug File",
         "category": "Mock Debug",
         "enablement": "!inDebugMode",
         "icon": "$(debug-alt)"
       },
       {
-        "command": "extension.mock-debug.runEditorContents",
+        "command": "extension.ring-debugger.runEditorContents",
         "title": "Run File",
         "category": "Mock Debug",
         "enablement": "!inDebugMode",
         "icon": "$(play)"
       },
       {
-        "command": "extension.mock-debug.toggleFormatting",
+        "command": "extension.ring-debugger.toggleFormatting",
         "title": "Toggle between decimal and hex formatting"
       }
     ],
@@ -131,11 +131,11 @@
     ],
     "debuggers": [
       {
-        "type": "mock",
+        "type": "ring-debugger",
         "languages": [
-          "markdown"
+          "ring"
         ],
-        "label": "Mock Debug",
+        "label": "Ring Debugger",
         "program": "./out/debugAdapter.js",
         "runtime": "node",
         "configurationAttributes": {
@@ -214,7 +214,7 @@
         },
         "initialConfigurations": [
           {
-            "type": "mock",
+            "type": "ring-debugger",
             "request": "launch",
             "name": "Ask for file name",
             "program": "${workspaceFolder}/${command:AskForProgramName}",
@@ -223,10 +223,10 @@
         ],
         "configurationSnippets": [
           {
-            "label": "Mock Debug: Launch",
-            "description": "A new configuration for 'debugging' a user selected markdown file.",
+            "label": "Ring Debugger: Launch",
+            "description": "A new configuration for 'debugging' ring.",
             "body": {
-              "type": "mock",
+              "type": "ring-debugger",
               "request": "launch",
               "name": "Ask for file name",
               "program": "^\"\\${workspaceFolder}/\\${command:AskForProgramName}\"",
@@ -235,7 +235,7 @@
           }
         ],
         "variables": {
-          "AskForProgramName": "extension.mock-debug.getProgramName"
+          "AskForProgramName": "extension.ring-debugger.getProgramName"
         }
       }
     ]
