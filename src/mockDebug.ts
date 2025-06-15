@@ -276,17 +276,17 @@ export class MockDebugSession extends LoggingDebugSession {
 	}
 
 	// 处理 ring 程序的 dap 协议 response/event
-	private handleGDBNotification(data: string): void {
+	private handleRingRdbDapMessage(data: string): void {
         // console.log('handleGDBNotification data:```', data, '```');
 		const lines: string[] = data.split('\n');
 
 		for (const line of lines) {
 			if( line.length > 0) {
-				this.handleGDBNotificationOneMessage(line);
+				this.handleRingRdbDapOneMessage(line);
 			}
 		}
 	}
-	private handleGDBNotificationOneMessage(data: string): void {
+	private handleRingRdbDapOneMessage(data: string): void {
 
 		const ringMessage :DebugProtocol.Response = JSON.parse(data);
 		// console.log('---------handleGDBNotification ringMessage:', ringMessage.type, ringMessage.command);
@@ -307,7 +307,6 @@ export class MockDebugSession extends LoggingDebugSession {
 				console.log("++++ threadsResponse:", threadsResponse);
 					
 				threadsResponse.seq = 0;
-				// threadsResponse.body.threads.push(new Thread(0, "virtual thread 0"));
 				this.sendResponse(threadsResponse);
 			} else if (ringMessage.command === 'stackTrace') {
 				// 直接转发给 UI
@@ -325,7 +324,7 @@ export class MockDebugSession extends LoggingDebugSession {
 				console.log('>>>> proxy `scopes` to ui');
 				const scopesResponse: DebugProtocol.ScopesResponse = JSON.parse(data);
 
-				console.log("++++ stackTraceResponse:", scopesResponse);
+				console.log("++++ scopesResponse:", scopesResponse);
 
 				scopesResponse.seq = 0;
 				this.sendResponse(scopesResponse);
@@ -334,7 +333,7 @@ export class MockDebugSession extends LoggingDebugSession {
 				console.log('>>>> proxy `variables` to ui');
 				const variablesResponse: DebugProtocol.VariablesResponse = JSON.parse(data);
 
-				console.log("++++ stackTraceResponse:", variablesResponse);
+				console.log("++++ variablesResponse:", variablesResponse);
 
 				variablesResponse.seq = 0;
 				this.sendResponse(variablesResponse);
@@ -411,7 +410,7 @@ export class MockDebugSession extends LoggingDebugSession {
         this.gdbProcess = spawn(ringBin, ['--interpreter=dap','rdb',args.program]);
 
 		this.gdbProcess.stderr?.on('data', (data) => {
-            this.handleGDBNotification(data.toString());
+            this.handleRingRdbDapMessage(data.toString());
         });
         this.gdbProcess.stdout?.on('data', (data) => {
 			console.log('ringStdOutput data:```', data.toString(), '```');
