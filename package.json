@@ -1,7 +1,7 @@
 {
   "name": "ring-debugger",
   "displayName": "Ring Debugger",
-  "version": "0.52.3",
+  "version": "0.0.4",
   "publisher": "RingLanguage",
   "description": "Ring-Language debug adapters for VS Code.",
   "author": {
