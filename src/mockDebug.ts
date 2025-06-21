@@ -72,7 +72,7 @@ export class MockDebugSession extends LoggingDebugSession {
 
 	private _addressesInHex = true;
 
-    private gdbProcess: ChildProcess | undefined;
+	private rdbProcess: ChildProcess | undefined;
 
 	// 
 	// private _requestSeqMap: Map<number, number> = new Map<number, number>();
@@ -95,7 +95,7 @@ export class MockDebugSession extends LoggingDebugSession {
 		this._runtime.on('stopOnEntry', () => {
 			console.log('stopOnEntry');
 			this.sendEvent(new StoppedEvent('entry', MockDebugSession.threadID));
-			this.sendEvent(new StoppedEvent('entry', MockDebugSession.threadID+1));
+			this.sendEvent(new StoppedEvent('entry', MockDebugSession.threadID + 1));
 		});
 		this._runtime.on('stopOnStep', () => {
 			console.log('stopOnStep');
@@ -128,7 +128,7 @@ export class MockDebugSession extends LoggingDebugSession {
 		this._runtime.on('output', (type, text, filePath, line, column) => {
 			console.log('output', type, text, filePath, line, column);
 			let category: string;
-			switch(type) {
+			switch (type) {
 				case 'prio': category = 'important'; break;
 				case 'out': category = 'stdout'; break;
 				case 'err': category = 'stderr'; break;
@@ -183,7 +183,7 @@ export class MockDebugSession extends LoggingDebugSession {
 
 		// make VS Code support completion in REPL
 		response.body.supportsCompletionsRequest = true;
-		response.body.completionTriggerCharacters = [ ".", "[" ];
+		response.body.completionTriggerCharacters = [".", "["];
 
 		// make VS Code send cancel request
 		response.body.supportsCancelRequest = true;
@@ -247,10 +247,40 @@ export class MockDebugSession extends LoggingDebugSession {
 		console.log('initializeRequest args:', args);
 		console.log('initializeRequest response:', response);
 
+
+		this.newRdbProcess();
+
 		// since this debug adapter can accept configuration requests like 'setBreakpoint' at any time,
 		// we request them early by sending an 'initializeRequest' to the frontend.
 		// The frontend will end the configuration sequence by calling 'configurationDone' request.
 		this.sendEvent(new InitializedEvent());
+	}
+
+	protected newRdbProcess() {
+		// 启动ring进程
+		// const ringBin = '/Users/lizhenhu/Desktop/Ring/bin/ring';
+		const ringBin = 'ring';
+		this.rdbProcess = spawn(ringBin, ['--interpreter=dap', 'rdb']);
+
+		this.rdbProcess.stderr?.on('data', (data) => {
+			this.handleRingRdbDapMessage(data.toString());
+		});
+		this.rdbProcess.stdout?.on('data', (data) => {
+			console.log('ringStdOutput data:```', data.toString(), '```');
+			// 直接给 debug console 展示为 程序的标准输出
+			this.sendEvent(new OutputEvent(data.toString(), 'stdout'));
+		});
+		this.rdbProcess.on('close', (code, signal) => {
+			console.log('ring process exited');
+
+			if (code !== 0) {
+				this.sendEvent(new OutputEvent(`ring process exited with code ${code}\n`, 'stderr'));
+			} else {
+				this.sendEvent(new OutputEvent(`ring process exited with code ${code}\n`, 'console'));
+			}
+
+			this.sendEvent(new TerminatedEvent());
+		});
 	}
 
 	/**
@@ -277,35 +307,67 @@ export class MockDebugSession extends LoggingDebugSession {
 
 	// 处理 ring 程序的 dap 协议 response/event
 	private handleRingRdbDapMessage(data: string): void {
-        // console.log('handleGDBNotification data:```', data, '```');
+		// console.log('handleGDBNotification data:```', data, '```');
 		const lines: string[] = data.split('\n');
 
 		for (const line of lines) {
-			if( line.length > 0) {
+			if (line.length > 0) {
 				this.handleRingRdbDapOneMessage(line);
 			}
 		}
 	}
 	private handleRingRdbDapOneMessage(data: string): void {
 
-		const ringMessage :DebugProtocol.Response = JSON.parse(data);
+		const ringMessage: DebugProtocol.Response = JSON.parse(data);
 		// console.log('---------handleGDBNotification ringMessage:', ringMessage.type, ringMessage.command);
-		if(ringMessage.type === 'event') {
-			console.log('>>>> proxy event to ui');
-			// TODO: 这里写死了 stoppedEvent
-			const event: DebugProtocol.StoppedEvent = JSON.parse(data);
+		if (ringMessage.type === 'event') {
+			const ringEvent: DebugProtocol.Event = JSON.parse(data);
 
-			event.seq = 0;
-			this.sendEvent(event);
+			if (ringEvent.event === 'terminated') {
+				console.log('>>>> proxy `terminated` to ui');
+
+				const event: DebugProtocol.TerminatedEvent = JSON.parse(data);
+				event.seq = 0;
+				this.sendEvent(event);
+
+				console.log("++++ TerminatedEvent:", event);
+			} else if (ringEvent.event === 'exited') {
+				console.log('>>>> proxy `exited` to ui');
+
+				const event: DebugProtocol.ExitedEvent = JSON.parse(data);
+				event.seq = 0;
+				this.sendEvent(event);
+
+				console.log("++++ ExitedEvent:", event);
+			} else if (ringEvent.event === 'stopped') {
+				console.log('>>>> proxy `stopped` to ui');
+
+				const event: DebugProtocol.StoppedEvent = JSON.parse(data);
+				event.seq = 0;
+				this.sendEvent(event);
+
+				console.log("++++ StoppedEvent:", event);
+			}
+
+
 
 		} else if (ringMessage.type === 'response') {
-		    if (ringMessage.command === 'threads') { 
+			if (ringMessage.command === 'launch') {
+				// 直接转发给 UI
+				console.log('>>>> proxy `launch` to ui');
+				const launchResponse: DebugProtocol.LaunchResponse = JSON.parse(data);
+
+				console.log("++++ launchResponse:", launchResponse);
+
+				launchResponse.seq = 0;
+				this.sendResponse(launchResponse);
+			} else if (ringMessage.command === 'threads') {
 				// 直接转发给 UI
 				console.log('>>>> proxy `threads` to ui');
 				const threadsResponse: DebugProtocol.ThreadsResponse = JSON.parse(data);
-	
+
 				console.log("++++ threadsResponse:", threadsResponse);
-					
+
 				threadsResponse.seq = 0;
 				this.sendResponse(threadsResponse);
 			} else if (ringMessage.command === 'stackTrace') {
@@ -364,7 +426,7 @@ export class MockDebugSession extends LoggingDebugSession {
 
 				nextResponse.seq = 0;
 				this.sendResponse(nextResponse);
-			}  else if (ringMessage.command === 'stepIn') {
+			} else if (ringMessage.command === 'stepIn') {
 				// 直接转发给 UI
 				console.log('>>>> proxy `stepIn` to ui');
 				const stepInResponse: DebugProtocol.StepInResponse = JSON.parse(data);
@@ -373,7 +435,7 @@ export class MockDebugSession extends LoggingDebugSession {
 
 				stepInResponse.seq = 0;
 				this.sendResponse(stepInResponse);
-			}  else if (ringMessage.command === 'stepOut') {
+			} else if (ringMessage.command === 'stepOut') {
 				// 直接转发给 UI
 				console.log('>>>> proxy `stepOut` to ui');
 				const stepOutResponse: DebugProtocol.StepOutResponse = JSON.parse(data);
@@ -382,19 +444,22 @@ export class MockDebugSession extends LoggingDebugSession {
 
 				stepOutResponse.seq = 0;
 				this.sendResponse(stepOutResponse);
-			} 
+			}
 		}
-		
-    }
+
+	}
 	// 发送 ring 程序的 dap 协议消息 request
 	private sendRingMessage(data: any): void {
 		const message = JSON.stringify(data);
 		// console.log('sendRingMessage:```', message, '```');
-		this.gdbProcess?.stdin?.write(message + '\n');
+		this.rdbProcess?.stdin?.write(message + '\n');
 	}
-	
+
 	protected async launchRequest(response: DebugProtocol.LaunchResponse, args: ILaunchRequestArguments) {
 		console.log('launchRequest args:', args);
+
+		// make sure to 'Stop' the buffered logging if 'trace' is not set
+		logger.setup(args.trace ? Logger.LogLevel.Verbose : Logger.LogLevel.Stop, false);
 
 		this.sendEvent(new OutputEvent("launchRequest\n", 'console'));
 
@@ -402,32 +467,16 @@ export class MockDebugSession extends LoggingDebugSession {
 		await this._configurationDone.wait(10000);
 
 		console.log('launchRequest start ring process....');
-		// 启动ring进程
-		// lizhenhu-debug
-		// args.program = "/Users/lizhenhu/Desktop/Ring/test/007-array/array-000.ring";
-		// const ringBin = '/Users/lizhenhu/Desktop/Ring/bin/ring';
-		const ringBin = 'ring';
-        this.gdbProcess = spawn(ringBin, ['--interpreter=dap','rdb',args.program]);
 
-		this.gdbProcess.stderr?.on('data', (data) => {
-            this.handleRingRdbDapMessage(data.toString());
-        });
-        this.gdbProcess.stdout?.on('data', (data) => {
-			console.log('ringStdOutput data:```', data.toString(), '```');
-			// 直接给 debug console 展示为 程序的标准输出
-            this.sendEvent(new OutputEvent(data.toString(), 'stdout'));
-        });
-        this.gdbProcess.on('close', (code, signal) => {
-			console.log('ring process exited');
 
-			if(code !== 0) {
-				this.sendEvent(new OutputEvent(`ring process exited with code ${code}\n`, 'stderr'));
-			} else {
-				this.sendEvent(new OutputEvent(`ring process exited with code ${code}\n`, 'console'));
-			}
+		const launchRequest: DebugProtocol.LaunchRequest = {
+			type: 'request',
+			seq: response.request_seq,
+			command: 'launch',
+			arguments: args,
+		};
+		this.sendRingMessage(launchRequest);
 
-            this.sendEvent(new TerminatedEvent());
-        });
 
 		// ring 进程成功拉起
 		this._launchDone.notify();
@@ -435,7 +484,7 @@ export class MockDebugSession extends LoggingDebugSession {
 
 		this.sendEvent(new OutputEvent("start ring process success\n", 'console'));
 
-		
+
 
 	}
 	protected async launchRequest_old(response: DebugProtocol.LaunchResponse, args: ILaunchRequestArguments) {
@@ -485,7 +534,7 @@ export class MockDebugSession extends LoggingDebugSession {
 		console.log('setBreakPointsRequest args:', args);
 		console.log('setBreakPointsRequest this._launched:', this._launched);
 
-		if(this._launched === false) {
+		if (this._launched === false) {
 			console.log('setBreakPointsRequest response:', response);
 			// TODO: 还没launched 的时候，直接返回一个空即可
 			// 在还没有launched的时候，发送 setBreakPointsRequest, 但是ring还不支持这种
@@ -609,7 +658,7 @@ export class MockDebugSession extends LoggingDebugSession {
 			this.sendRingMessage(threadsRequest);
 			return;
 		}
-		
+
 
 		// runtime supports no threads so just return a default thread.
 		response.body = {
@@ -779,8 +828,8 @@ export class MockDebugSession extends LoggingDebugSession {
 		const rv = container === 'locals'
 			? this._runtime.getLocalVariable(args.name)
 			: container instanceof RuntimeVariable && container.value instanceof Array
-			? container.value.find(v => v.name === args.name)
-			: undefined;
+				? container.value.find(v => v.name === args.name)
+				: undefined;
 
 		if (rv) {
 			rv.value = this.convertToRuntime(args.value);
@@ -797,7 +846,7 @@ export class MockDebugSession extends LoggingDebugSession {
 	protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
 		console.log("continueRequest args:", args);
 
-		if(true) {
+		if (true) {
 			const continueRequest: DebugProtocol.ContinueRequest = {
 				type: 'request',
 				seq: response.request_seq,
@@ -817,7 +866,7 @@ export class MockDebugSession extends LoggingDebugSession {
 		console.log("reverseContinueRequest args:", args);
 		this._runtime.continue(true);
 		this.sendResponse(response);
- 	}
+	}
 
 	protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
 		console.log("nextRequest args:", args);
@@ -906,7 +955,7 @@ export class MockDebugSession extends LoggingDebugSession {
 				if (matches && matches.length === 2) {
 					const mbp = await this._runtime.setBreakPoint(this._runtime.sourceFile, this.convertClientLineToDebugger(parseInt(matches[1])));
 					const bp = new Breakpoint(mbp.verified, this.convertDebuggerLineToClient(mbp.line), undefined, this.createSource(this._runtime.sourceFile)) as DebugProtocol.Breakpoint;
-					bp.id= mbp.id;
+					bp.id = mbp.id;
 					this.sendEvent(new BreakpointEvent('new', bp));
 					reply = `breakpoint created`;
 				} else {
@@ -915,7 +964,7 @@ export class MockDebugSession extends LoggingDebugSession {
 						const mbp = this._runtime.clearBreakPoint(this._runtime.sourceFile, this.convertClientLineToDebugger(parseInt(matches[1])));
 						if (mbp) {
 							const bp = new Breakpoint(false) as DebugProtocol.Breakpoint;
-							bp.id= mbp.id;
+							bp.id = mbp.id;
 							this.sendEvent(new BreakpointEvent('removed', bp));
 							reply = `breakpoint deleted`;
 						}
@@ -931,7 +980,7 @@ export class MockDebugSession extends LoggingDebugSession {
 						}
 					}
 				}
-				// fall through
+			// fall through
 
 			default:
 				if (args.expression.startsWith('$')) {
@@ -1022,18 +1071,18 @@ export class MockDebugSession extends LoggingDebugSession {
 		console.log("dataBreakpointInfoRequest args:", args);
 
 		response.body = {
-            dataId: null,
-            description: "cannot break on data access",
-            accessTypes: undefined,
-            canPersist: false
-        };
+			dataId: null,
+			description: "cannot break on data access",
+			accessTypes: undefined,
+			canPersist: false
+		};
 
 		if (args.variablesReference && args.name) {
 			const v = this._variableHandles.get(args.variablesReference);
 			if (v === 'globals') {
 				response.body.dataId = args.name;
 				response.body.description = args.name;
-				response.body.accessTypes = [ "write" ];
+				response.body.accessTypes = ["write"];
 				response.body.canPersist = true;
 			} else {
 				response.body.dataId = args.name;
@@ -1108,7 +1157,7 @@ export class MockDebugSession extends LoggingDebugSession {
 			this._cancellationTokens.set(args.requestId, true);
 		}
 		if (args.progressId) {
-			this._cancelledProgressId= args.progressId;
+			this._cancelledProgressId = args.progressId;
 		}
 	}
 
@@ -1120,16 +1169,16 @@ export class MockDebugSession extends LoggingDebugSession {
 		const count = args.instructionCount;
 
 		const isHex = memoryInt.startsWith('0x');
-		const pad = isHex ? memoryInt.length-2 : memoryInt.length;
+		const pad = isHex ? memoryInt.length - 2 : memoryInt.length;
 
 		const loc = this.createSource(this._runtime.sourceFile);
 
 		let lastLine = -1;
 
-		const instructions = this._runtime.disassemble(baseAddress+offset, count).map(instruction => {
+		const instructions = this._runtime.disassemble(baseAddress + offset, count).map(instruction => {
 			let address = Math.abs(instruction.address).toString(isHex ? 16 : 10).padStart(pad, '0');
 			const sign = instruction.address < 0 ? '-' : '';
-			const instr : DebugProtocol.DisassembledInstruction = {
+			const instr: DebugProtocol.DisassembledInstruction = {
 				address: sign + (isHex ? `0x${address}` : `${address}`),
 				instruction: instruction.instruction
 			};
@@ -1172,9 +1221,9 @@ export class MockDebugSession extends LoggingDebugSession {
 	protected customRequest(command: string, response: DebugProtocol.Response, args: any) {
 		console.log("customRequest command:", command, "args:", args);
 		if (command === 'toggleFormatting') {
-			this._valuesInHex = ! this._valuesInHex;
+			this._valuesInHex = !this._valuesInHex;
 			if (this._useInvalidatedEvent) {
-				this.sendEvent(new InvalidatedEvent( ['variables'] ));
+				this.sendEvent(new InvalidatedEvent(['variables']));
 			}
 			this.sendResponse(response);
 		} else {
@@ -1186,7 +1235,7 @@ export class MockDebugSession extends LoggingDebugSession {
 
 	private convertToRuntime(value: string): IRuntimeVariableType {
 
-		value= value.trim();
+		value = value.trim();
 
 		if (value === 'true') {
 			return true;
@@ -1195,7 +1244,7 @@ export class MockDebugSession extends LoggingDebugSession {
 			return false;
 		}
 		if (value[0] === '\'' || value[0] === '"') {
-			return value.substr(1, value.length-2);
+			return value.substr(1, value.length - 2);
 		}
 		const n = parseFloat(value);
 		if (!isNaN(n)) {
@@ -1218,7 +1267,7 @@ export class MockDebugSession extends LoggingDebugSession {
 			// a "lazy" variable needs an additional click to retrieve its value
 
 			dapVariable.value = 'lazy var';		// placeholder value
-			v.reference ??= this._variableHandles.create(new RuntimeVariable('', [ new RuntimeVariable('', v.value) ]));
+			v.reference ??= this._variableHandles.create(new RuntimeVariable('', [new RuntimeVariable('', v.value)]));
 			dapVariable.variablesReference = v.reference;
 			dapVariable.presentationHint = { lazy: true };
 		} else {
