@@ -164,6 +164,7 @@ export class MockRuntime extends EventEmitter {
 			await this.verifyBreakpoints(this._sourceFile);
 
 			if (stopOnEntry) {
+				console.log('stopOnEntry ------- start');
 				this.findNextStatement(false, 'stopOnEntry');
 			} else {
 				// we just start to run until we hit a breakpoint, an exception, or the end of the program
@@ -290,37 +291,55 @@ export class MockRuntime extends EventEmitter {
 	/**
 	 * Returns a fake 'stacktrace' where every 'stackframe' is a word from the current line.
 	 */
+	// TODO: 研究这个函数
 	public stack(startFrame: number, endFrame: number): IRuntimeStack {
 
-		const line = this.getLine();
-		const words = this.getWords(this.currentLine, line);
-		words.push({ name: 'BOTTOM', line: -1, index: -1 });	// add a sentinel so that the stack is never empty...
+		// const line = this.getLine();
+		// const words = this.getWords(this.currentLine, line);
+		// words.push({ name: 'BOTTOM', line: -1, index: -1 });	// add a sentinel so that the stack is never empty...
 
-		// if the line contains the word 'disassembly' we support to "disassemble" the line by adding an 'instruction' property to the stackframe
-		const instruction = line.indexOf('disassembly') >= 0 ? this.instruction : undefined;
+		// // if the line contains the word 'disassembly' we support to "disassemble" the line by adding an 'instruction' property to the stackframe
+		// const instruction = line.indexOf('disassembly') >= 0 ? this.instruction : undefined;
 
-		const column = typeof this.currentColumn === 'number' ? this.currentColumn : undefined;
+		// const column = typeof this.currentColumn === 'number' ? this.currentColumn : undefined;
 
-		const frames: IRuntimeStackFrame[] = [];
-		// every word of the current line becomes a stack frame.
-		for (let i = startFrame; i < Math.min(endFrame, words.length); i++) {
+		const frames: IRuntimeStackFrame[] = [
+			{index: 0, name: "test", file:"/Users/lizhenhu/Desktop/vscode-mock-debug/sampleWorkspace/function-009.ring", line:24, column: 1, instruction: 0},
+			{index: 1, name: "main", file:"/Users/lizhenhu/Desktop/vscode-mock-debug/sampleWorkspace/function-009.ring", line:62, column: 1, instruction: 0},
+		];
 
-			const stackFrame: IRuntimeStackFrame = {
-				index: i,
-				name: `${words[i].name}(${i})`,	// use a word of the line as the stackframe name
-				file: this._sourceFile,
-				line: this.currentLine,
-				column: column, // words[i].index
-				instruction: instruction ? instruction + i : 0
-			};
+		const result: IRuntimeStackFrame[] = [];
 
-			frames.push(stackFrame);
+		for (let i = startFrame; i < Math.min(endFrame, frames.length); i++) {
+			result.push(frames[i]);
 		}
 
 		return {
-			frames: frames,
-			count: words.length
+			frames: result,
+			count: frames.length
 		};
+
+
+
+		// // every word of the current line becomes a stack frame.
+		// for (let i = startFrame; i < Math.min(endFrame, words.length); i++) {
+
+		// 	const stackFrame: IRuntimeStackFrame = {
+		// 		index: i,
+		// 		name: `${words[i].name}(${i})`,	// use a word of the line as the stackframe name
+		// 		file: this._sourceFile,
+		// 		line: this.currentLine,
+		// 		column: column, // words[i].index
+		// 		instruction: instruction ? instruction + i : 0
+		// 	};
+
+		// 	frames.push(stackFrame);
+		// }
+
+		// return {
+		// 	frames: frames,
+		// 	count: words.length
+		// };
 	}
 
 	/*
@@ -407,18 +426,37 @@ export class MockRuntime extends EventEmitter {
 
 		let a: RuntimeVariable[] = [];
 
+		a.push(new RuntimeVariable('global_bool_value', true));
+		a.push(new RuntimeVariable('global_string_value', "hello world"));
+
+		const array_1: RuntimeVariable[] =[
+			new RuntimeVariable('[0]', 1),
+			new RuntimeVariable('[1]', 2),
+		];
+		a.push(new RuntimeVariable('global_array_value', array_1));
+
+		const object_1: RuntimeVariable[] = [
+			new RuntimeVariable('int_field', 1),
+			new RuntimeVariable('stirng_field', "job_name"),
+		];
+		a.push(new RuntimeVariable('global_class_ob_value', object_1));
+
+
 		for (let i = 0; i < 10; i++) {
-			a.push(new RuntimeVariable(`global_${i}`, i));
+			a.push(new RuntimeVariable(`global_${i}`, i+100));
 			if (cancellationToken && cancellationToken()) {
 				break;
 			}
-			await timeout(1000);
+			// await timeout(1000);
 		}
 
 		return a;
 	}
 
 	public getLocalVariables(): RuntimeVariable[] {
+		this.variables.set("local_bool_value", new RuntimeVariable("local_bool_value", true));
+		this.variables.set("local_string_value", new RuntimeVariable("local_string_value", "string_value"));
+
 		return Array.from(this.variables, ([name, value]) => value);
 	}
 
@@ -497,6 +535,7 @@ export class MockRuntime extends EventEmitter {
 	/**
 	 * return true on stop
 	 */
+	// TODO: 无需关注，交给 rdb就好
 	 private findNextStatement(reverse: boolean, stepEvent?: string): boolean {
 
 		for (let ln = this.currentLine; reverse ? ln >= 0 : ln < this.sourceLines.length; reverse ? ln-- : ln++) {

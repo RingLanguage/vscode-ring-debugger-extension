@@ -6,19 +6,34 @@
 	"configurations": [
 		{
 			"type": "mock",
-			"request": "launch",
-			"name": "Debug readme.md",
-			"program": "${workspaceFolder}/readme.md",
-			"stopOnEntry": true,
-			"trace": false
-		},
-		{
-			"type": "mock",
 			"request": "attach",
 			"name": "Attach readme.md",
 			"program": "${workspaceFolder}/readme.md",
 			"stopOnEntry": true,
 			"trace": false
+		},
+		{
+			"type": "mock-lizhenhu",
+			"request": "launch",
+			"name": "[mock-lizhenhu]Debug readme.md",
+			"program": "${workspaceFolder}/readme.md",
+			"stopOnEntry": true,
+			"debugServer": 4711
+		},
+		{
+			"type": "ring-debugger",
+			"request": "launch",
+			"name": "[ring-debugger]Run Ring Attach Server",
+			"program": "${workspaceFolder}/function-000.ring",
+			"stopOnEntry": true,
+			"debugServer": 4711
+		},
+		{
+			"type": "ring-debugger",
+			"request": "launch",
+			"name": "[ring-debugger]Run Ring New Server",
+			"program": "${workspaceFolder}/global-variable-000.ring",
+			"stopOnEntry": true
 		}
 	]
 }

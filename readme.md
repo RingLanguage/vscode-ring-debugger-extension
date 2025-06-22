@@ -1,4 +1,4 @@
-# VS Code Mock Debug
+# Ring Debugger
 
 This is a starter sample for developing VS Code debug adapters.
 
