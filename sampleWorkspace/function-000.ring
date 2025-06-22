@@ -4,6 +4,7 @@ package main
 import {
 	fmt;
 	debug;
+    os;
 }
 
 
@@ -56,5 +57,7 @@ fn main() {
 
     fmt::println_string("invoke doit4");
     doit4();
+
+    os::exit(2);
 
 }

@@ -15,7 +15,7 @@ import {
 	LoggingDebugSession,
 	InitializedEvent, TerminatedEvent, StoppedEvent, BreakpointEvent, OutputEvent,
 	ProgressStartEvent, ProgressUpdateEvent, ProgressEndEvent, InvalidatedEvent,
-	Thread, StackFrame, Scope, Source, Handles, Breakpoint, MemoryEvent
+	Source, Handles, Breakpoint, MemoryEvent
 } from '@vscode/debugadapter';
 import { DebugProtocol } from '@vscode/debugprotocol';
 import { basename } from 'path-browserify';
@@ -58,7 +58,6 @@ export class MockDebugSession extends LoggingDebugSession {
 
 	private _configurationDone = new Subject();
 	private _launchDone = new Subject();
-	private _launched = false;
 
 	private _cancellationTokens = new Map<number, boolean>();
 
@@ -70,9 +69,10 @@ export class MockDebugSession extends LoggingDebugSession {
 	private _valuesInHex = false;
 	private _useInvalidatedEvent = false;
 
-	private _addressesInHex = true;
+	private ringRdbProcess: ChildProcess | undefined;
 
-	private rdbProcess: ChildProcess | undefined;
+	// 展示 extension 和 rdb 交换的详细日志
+	private _showDebugRdbLog = false;
 
 	// 
 	// private _requestSeqMap: Map<number, number> = new Map<number, number>();
@@ -197,26 +197,9 @@ export class MockDebugSession extends LoggingDebugSession {
 		// the adapter defines two exceptions filters, one with support for conditions.
 		response.body.supportsExceptionFilterOptions = true;
 
-		// 这个设置可以确保即使只有一个线程也会显示
-		// response.body.supportsSingleThreadExecutionRequests = true;
 
 
 		response.body.exceptionBreakpointFilters = [
-			// {
-			// 	filter: 'namedException',
-			// 	label: "Named Exception",
-			// 	description: `Break on named exceptions. Enter the exception's name as the Condition.`,
-			// 	default: false,
-			// 	supportsCondition: true,
-			// 	conditionDescription: `Enter the exception's name`
-			// },
-			// {
-			// 	filter: 'otherExceptions',
-			// 	label: "Other Exceptions",
-			// 	description: 'This is a other exception',
-			// 	default: true,
-			// 	supportsCondition: false
-			// }
 		];
 
 		// make VS Code send exceptionInfo request
@@ -244,8 +227,8 @@ export class MockDebugSession extends LoggingDebugSession {
 
 		this.sendResponse(response);
 
-		console.log('initializeRequest args:', args);
-		console.log('initializeRequest response:', response);
+		console.log('initializeRequest:', args);
+		console.log('initializeResponse:', response);
 
 
 		this.newRdbProcess();
@@ -259,24 +242,24 @@ export class MockDebugSession extends LoggingDebugSession {
 	protected newRdbProcess() {
 		// 启动ring进程
 		// const ringBin = '/Users/lizhenhu/Desktop/Ring/bin/ring';
-		const ringBin = 'ring';
-		this.rdbProcess = spawn(ringBin, ['--interpreter=dap', 'rdb']);
+		const ringRdbBin = 'ring';
+		this.ringRdbProcess = spawn(ringRdbBin, ['--interpreter=dap', 'rdb']);
 
-		this.rdbProcess.stderr?.on('data', (data) => {
+		this.ringRdbProcess.stderr?.on('data', (data) => {
 			this.handleRingRdbDapMessage(data.toString());
 		});
-		this.rdbProcess.stdout?.on('data', (data) => {
-			console.log('ringStdOutput data:```', data.toString(), '```');
+		this.ringRdbProcess.stdout?.on('data', (data) => {
+			console.log('ringRdbStdOutput data:```', data.toString(), '```');
 			// 直接给 debug console 展示为 程序的标准输出
 			this.sendEvent(new OutputEvent(data.toString(), 'stdout'));
 		});
-		this.rdbProcess.on('close', (code, signal) => {
-			console.log('ring process exited');
+		this.ringRdbProcess.on('close', (code, signal) => {
+			console.log('ring-rdb process exited');
 
 			if (code !== 0) {
-				this.sendEvent(new OutputEvent(`ring process exited with code ${code}\n`, 'stderr'));
+				this.sendEvent(new OutputEvent(`ring-rdb process exited with code ${code}\n`, 'stderr'));
 			} else {
-				this.sendEvent(new OutputEvent(`ring process exited with code ${code}\n`, 'console'));
+				this.sendEvent(new OutputEvent(`ring-rdb process exited with code ${code}\n`, 'console'));
 			}
 
 			this.sendEvent(new TerminatedEvent());
@@ -305,13 +288,21 @@ export class MockDebugSession extends LoggingDebugSession {
 		return this.launchRequest(response, args);
 	}
 
+	private showDebugRdbLog(receOrSend: 'receive' | 'send', data: string): void {
+		if (!this._showDebugRdbLog) {
+			return;
+		}
+		const title = `${receOrSend} dap message`;
+		console.log('<<<<<<<<<<<<<< %s:\n```\n%s\n```\n<<<<<<<<<<<<<<', title, data);
+	}
+
 	// 处理 ring 程序的 dap 协议 response/event
 	private handleRingRdbDapMessage(data: string): void {
-		// console.log('handleGDBNotification data:```', data, '```');
 		const lines: string[] = data.split('\n');
 
 		for (const line of lines) {
 			if (line.length > 0) {
+				this.showDebugRdbLog('receive', line);
 				this.handleRingRdbDapOneMessage(line);
 			}
 		}
@@ -319,140 +310,117 @@ export class MockDebugSession extends LoggingDebugSession {
 	private handleRingRdbDapOneMessage(data: string): void {
 
 		const ringMessage: DebugProtocol.Response = JSON.parse(data);
-		// console.log('---------handleGDBNotification ringMessage:', ringMessage.type, ringMessage.command);
 		if (ringMessage.type === 'event') {
 			const ringEvent: DebugProtocol.Event = JSON.parse(data);
 
-			if (ringEvent.event === 'terminated') {
-				console.log('>>>> proxy `terminated` to ui');
+			console.log('<<<<<< receive/proxy event `%s` to ui', ringEvent.event);
 
+			if (ringEvent.event === 'terminated') {
 				const event: DebugProtocol.TerminatedEvent = JSON.parse(data);
 				event.seq = 0;
 				this.sendEvent(event);
 
-				console.log("++++ TerminatedEvent:", event);
+				console.log("TerminatedEvent:", event);
 			} else if (ringEvent.event === 'exited') {
-				console.log('>>>> proxy `exited` to ui');
-
 				const event: DebugProtocol.ExitedEvent = JSON.parse(data);
 				event.seq = 0;
 				this.sendEvent(event);
 
-				console.log("++++ ExitedEvent:", event);
-			} else if (ringEvent.event === 'stopped') {
-				console.log('>>>> proxy `stopped` to ui');
+				console.log("ExitedEvent:", event);
 
+				if (event.body.exitCode !== 0) {
+					this.sendEvent(new OutputEvent(`ring process exited with code ${event.body.exitCode}\n`, 'stderr'));
+				} else {
+					this.sendEvent(new OutputEvent(`ring process exited with code ${event.body.exitCode}\n`, 'console'));
+				}
+	
+				this.sendEvent(new TerminatedEvent());
+
+			} else if (ringEvent.event === 'stopped') {
 				const event: DebugProtocol.StoppedEvent = JSON.parse(data);
 				event.seq = 0;
 				this.sendEvent(event);
 
-				console.log("++++ StoppedEvent:", event);
+				console.log("StoppedEvent:", event);
 			}
 
 
 
 		} else if (ringMessage.type === 'response') {
+
+			console.log('<<<<<< receive/proxy response `%s` to ui', ringMessage.command);
+
 			if (ringMessage.command === 'launch') {
-				// 直接转发给 UI
-				console.log('>>>> proxy `launch` to ui');
 				const launchResponse: DebugProtocol.LaunchResponse = JSON.parse(data);
-
-				console.log("++++ launchResponse:", launchResponse);
-
 				launchResponse.seq = 0;
 				this.sendResponse(launchResponse);
+
+				console.log("launchResponse:", launchResponse);
 			} else if (ringMessage.command === 'threads') {
-				// 直接转发给 UI
-				console.log('>>>> proxy `threads` to ui');
 				const threadsResponse: DebugProtocol.ThreadsResponse = JSON.parse(data);
-
-				console.log("++++ threadsResponse:", threadsResponse);
-
 				threadsResponse.seq = 0;
 				this.sendResponse(threadsResponse);
+
+				console.log("threadsResponse:", threadsResponse);
 			} else if (ringMessage.command === 'stackTrace') {
-				// 直接转发给 UI
-				console.log('>>>> proxy `stackTrace` to ui');
 				const stackTraceResponse: DebugProtocol.StackTraceResponse = JSON.parse(data);
-
-				// TODO: 这里要分页
-
-				console.log("++++ stackTraceResponse:", stackTraceResponse);
-
 				stackTraceResponse.seq = 0;
 				this.sendResponse(stackTraceResponse);
+
+				console.log("stackTraceResponse:", stackTraceResponse);
 			} else if (ringMessage.command === 'scopes') {
-				// 直接转发给 UI
-				console.log('>>>> proxy `scopes` to ui');
 				const scopesResponse: DebugProtocol.ScopesResponse = JSON.parse(data);
-
-				console.log("++++ scopesResponse:", scopesResponse);
-
 				scopesResponse.seq = 0;
 				this.sendResponse(scopesResponse);
+
+				console.log("scopesResponse:", scopesResponse);
 			} else if (ringMessage.command === 'variables') {
-				// 直接转发给 UI
-				console.log('>>>> proxy `variables` to ui');
 				const variablesResponse: DebugProtocol.VariablesResponse = JSON.parse(data);
-
-				console.log("++++ variablesResponse:", variablesResponse);
-
 				variablesResponse.seq = 0;
 				this.sendResponse(variablesResponse);
+
+				console.log("variablesResponse:", variablesResponse);
 			} else if (ringMessage.command === 'setBreakpoints') {
-				// 直接转发给 UI
-				console.log('>>>> proxy `setBreakpoints` to ui');
 				const setBreakpointsResponse: DebugProtocol.SetBreakpointsResponse = JSON.parse(data);
-
-				console.log("++++ setBreakpointsResponse:", setBreakpointsResponse);
-
 				setBreakpointsResponse.seq = 0;
 				this.sendResponse(setBreakpointsResponse);
+
+				console.log("setBreakpointsResponse:", setBreakpointsResponse);
 			} else if (ringMessage.command === 'continue') {
-				// 直接转发给 UI
-				console.log('>>>> proxy `continue` to ui');
 				const continueResponse: DebugProtocol.ContinueResponse = JSON.parse(data);
-
-				console.log("++++ continueResponse:", continueResponse);
-
 				continueResponse.seq = 0;
 				this.sendResponse(continueResponse);
+
+				console.log("continueResponse:", continueResponse);
 			} else if (ringMessage.command === 'next') {
-				// 直接转发给 UI
-				console.log('>>>> proxy `next` to ui');
 				const nextResponse: DebugProtocol.NextResponse = JSON.parse(data);
-
-				console.log("++++ nextResponse:", nextResponse);
-
 				nextResponse.seq = 0;
 				this.sendResponse(nextResponse);
+
+				console.log("nextResponse:", nextResponse);
 			} else if (ringMessage.command === 'stepIn') {
-				// 直接转发给 UI
-				console.log('>>>> proxy `stepIn` to ui');
 				const stepInResponse: DebugProtocol.StepInResponse = JSON.parse(data);
-
-				console.log("++++ stepInResponse:", stepInResponse);
-
 				stepInResponse.seq = 0;
 				this.sendResponse(stepInResponse);
+
+				console.log("stepInResponse:", stepInResponse);
 			} else if (ringMessage.command === 'stepOut') {
-				// 直接转发给 UI
-				console.log('>>>> proxy `stepOut` to ui');
 				const stepOutResponse: DebugProtocol.StepOutResponse = JSON.parse(data);
-
-				console.log("++++ stepOutResponse:", stepOutResponse);
-
 				stepOutResponse.seq = 0;
 				this.sendResponse(stepOutResponse);
+
+				console.log("stepOutResponse:", stepOutResponse);
 			}
 		}
 
 	}
 	// 发送 ring 程序的 dap 协议消息 request
-	private sendRingMessage(data: any): void {
-		const message = JSON.stringify(data);
-		// console.log('sendRingMessage:```', message, '```');
-		this.rdbProcess?.stdin?.write(message + '\n');
+	private sendRingRdbDapMessage(message: any): void {
+		const data = JSON.stringify(message);
+
+		this.showDebugRdbLog('send', data);
+
+		this.ringRdbProcess?.stdin?.write(data + '\n');
 	}
 
 	protected async launchRequest(response: DebugProtocol.LaunchResponse, args: ILaunchRequestArguments) {
@@ -461,7 +429,7 @@ export class MockDebugSession extends LoggingDebugSession {
 		// make sure to 'Stop' the buffered logging if 'trace' is not set
 		logger.setup(args.trace ? Logger.LogLevel.Verbose : Logger.LogLevel.Stop, false);
 
-		this.sendEvent(new OutputEvent("launchRequest\n", 'console'));
+		// this.sendEvent(new OutputEvent("launchRequest\n", 'console'));
 
 		// 手动 configurationDone 之后再启动 ring 进程
 		await this._configurationDone.wait(10000);
@@ -475,54 +443,16 @@ export class MockDebugSession extends LoggingDebugSession {
 			command: 'launch',
 			arguments: args,
 		};
-		this.sendRingMessage(launchRequest);
+		this.sendRingRdbDapMessage(launchRequest);
 
 
 		// ring 进程成功拉起
 		this._launchDone.notify();
-		this._launched = true;
 
-		this.sendEvent(new OutputEvent("start ring process success\n", 'console'));
-
+		this.sendEvent(new OutputEvent("start ring-rdb process success\n", 'console'));
 
 
-	}
-	protected async launchRequest_old(response: DebugProtocol.LaunchResponse, args: ILaunchRequestArguments) {
-		console.log('launchRequest args:', args);
 
-		// make sure to 'Stop' the buffered logging if 'trace' is not set
-		logger.setup(args.trace ? Logger.LogLevel.Verbose : Logger.LogLevel.Stop, false);
-
-		// wait 1 second until configuration has finished (and configurationDoneRequest has been called)
-		await this._configurationDone.wait(1000);
-
-		// this.sendErrorResponse(response, {
-		// 	id: 1001,
-		// 	format: `compile error: some fake error.`,
-		// 	showUser: true,
-		// 	url: "https://ring.wiki",
-		// 	urlLabel: "Ring Wiki"
-		// });
-
-		console.log('launchRequest start....');
-		const ouputEvent: DebugProtocol.OutputEvent = new OutputEvent('lizhenhu-output', 'important');
-		this.sendEvent(ouputEvent);
-
-		// start the program in the runtime
-		await this._runtime.start(args.program, !!args.stopOnEntry, !args.noDebug);
-
-		if (args.compileError) {
-			// simulate a compile/build error in "launch" request:
-			// the error should not result in a modal dialog since 'showUser' is set to false.
-			// A missing 'showUser' should result in a modal dialog.
-			this.sendErrorResponse(response, {
-				id: 1001,
-				format: `compile error: some fake error.`,
-				showUser: args.compileError === 'show' ? true : (args.compileError === 'hide' ? false : undefined)
-			});
-		} else {
-			this.sendResponse(response);
-		}
 	}
 
 	protected setFunctionBreakPointsRequest(response: DebugProtocol.SetFunctionBreakpointsResponse, args: DebugProtocol.SetFunctionBreakpointsArguments, request?: DebugProtocol.Request): void {
@@ -532,51 +462,17 @@ export class MockDebugSession extends LoggingDebugSession {
 
 	protected async setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): Promise<void> {
 		console.log('setBreakPointsRequest args:', args);
-		console.log('setBreakPointsRequest this._launched:', this._launched);
 
-		if (this._launched === false) {
-			console.log('setBreakPointsRequest response:', response);
-			// TODO: 还没launched 的时候，直接返回一个空即可
-			// 在还没有launched的时候，发送 setBreakPointsRequest, 但是ring还不支持这种
-			// 手动发送一个response，这样UI 会继续发送 configurationDoneRequest
-			// 后续需要兼容这种情况
-			// response.body.breakpoints[0].verified = false;
-			this.sendResponse(response);
-			return;
-		}
-
-		if (true) {
-			const setBreakpointsRequest: DebugProtocol.SetBreakpointsRequest = {
-				type: 'request',
-				seq: response.request_seq,
-				command: 'setBreakpoints',
-				arguments: args
-			};
-
-			this.sendRingMessage(setBreakpointsRequest);
-			return;
-		}
-
-		const path = args.source.path as string;
-		const clientLines = args.lines || [];
-
-		// clear all breakpoints for this file
-		this._runtime.clearBreakpoints(path);
-
-		// set and verify breakpoint locations
-		const actualBreakpoints0 = clientLines.map(async l => {
-			const { verified, line, id } = await this._runtime.setBreakPoint(path, this.convertClientLineToDebugger(l));
-			const bp = new Breakpoint(verified, this.convertDebuggerLineToClient(line)) as DebugProtocol.Breakpoint;
-			bp.id = id;
-			return bp;
-		});
-		const actualBreakpoints = await Promise.all<DebugProtocol.Breakpoint>(actualBreakpoints0);
-
-		// send back the actual breakpoint positions
-		response.body = {
-			breakpoints: actualBreakpoints
+		const setBreakpointsRequest: DebugProtocol.SetBreakpointsRequest = {
+			type: 'request',
+			seq: response.request_seq,
+			command: 'setBreakpoints',
+			arguments: args
 		};
-		this.sendResponse(response);
+
+		this.sendRingRdbDapMessage(setBreakpointsRequest);
+		return;
+
 	}
 
 	protected breakpointLocationsRequest(response: DebugProtocol.BreakpointLocationsResponse, args: DebugProtocol.BreakpointLocationsArguments, request?: DebugProtocol.Request): void {
@@ -648,98 +544,47 @@ export class MockDebugSession extends LoggingDebugSession {
 	protected async threadsRequest(response: DebugProtocol.ThreadsResponse): Promise<void> {
 
 		console.log('threadsRequest');
-		if (true) {
-			const threadsRequest: DebugProtocol.ThreadsRequest = {
-				type: 'request',
-				seq: response.request_seq,
-				command: 'threads'
-			};
-
-			this.sendRingMessage(threadsRequest);
-			return;
-		}
-
-
-		// runtime supports no threads so just return a default thread.
-		response.body = {
-			threads: [
-				new Thread(MockDebugSession.threadID, "thread 1.ring routinue"),
-				new Thread(MockDebugSession.threadID + 1, "thread 2"),
-			]
+		const threadsRequest: DebugProtocol.ThreadsRequest = {
+			type: 'request',
+			seq: response.request_seq,
+			command: 'threads'
 		};
-		console.log('threadsRequest response:', response);
-		this.sendResponse(response);
+
+		this.sendRingRdbDapMessage(threadsRequest);
+		return;
+
 	}
 
 	protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments): void {
 
 		console.log("stackTraceRequest args:", args);
 
-		const startFrame = typeof args.startFrame === 'number' ? args.startFrame : 0;
-		const maxLevels = typeof args.levels === 'number' ? args.levels : 1000;
-		const endFrame = startFrame + maxLevels;
 
-		if (true) {
-			const stackTraceRequest: DebugProtocol.StackTraceRequest = {
-				type: 'request',
-				seq: response.request_seq,
-				command: 'stackTrace',
-				arguments: args,
-			};
-
-			this.sendRingMessage(stackTraceRequest);
-			return;
-		}
-
-		const stk = this._runtime.stack(startFrame, endFrame);
-
-		response.body = {
-			stackFrames: stk.frames.map((f, ix) => {
-				const sf: DebugProtocol.StackFrame = new StackFrame(f.index, f.name, this.createSource(f.file), this.convertDebuggerLineToClient(f.line));
-				if (typeof f.column === 'number') {
-					sf.column = this.convertDebuggerColumnToClient(f.column);
-				}
-				if (typeof f.instruction === 'number') {
-					const address = this.formatAddress(f.instruction);
-					sf.name = `${f.name} ${address}`;
-					sf.instructionPointerReference = address;
-				}
-
-				return sf;
-			}),
-			// 4 options for 'totalFrames':
-			//omit totalFrames property: 	// VS Code has to probe/guess. Should result in a max. of two requests
-			totalFrames: stk.count			// stk.count is the correct size, should result in a max. of two requests
-			//totalFrames: 1000000 			// not the correct size, should result in a max. of two requests
-			//totalFrames: endFrame + 20 	// dynamically increases the size with every requested chunk, results in paging
+		const stackTraceRequest: DebugProtocol.StackTraceRequest = {
+			type: 'request',
+			seq: response.request_seq,
+			command: 'stackTrace',
+			arguments: args,
 		};
 
-		console.log("stackTraceRequest response:", response);
-		this.sendResponse(response);
+		this.sendRingRdbDapMessage(stackTraceRequest);
+		return;
+
 	}
 
 	protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments): void {
 		console.log("scopesRequest args:", args);
 
-		if (true) {
-			const scopesRequest: DebugProtocol.ScopesRequest = {
-				type: 'request',
-				seq: response.request_seq,
-				command: 'scopes',
-				arguments: args,
-			};
-
-			this.sendRingMessage(scopesRequest);
-			return;
-		}
-
-		response.body = {
-			scopes: [
-				new Scope("Locals-lizhenhu", this._variableHandles.create('locals'), false),
-				new Scope("Globals-lizhenhu", this._variableHandles.create('globals'), true)
-			]
+		const scopesRequest: DebugProtocol.ScopesRequest = {
+			type: 'request',
+			seq: response.request_seq,
+			command: 'scopes',
+			arguments: args,
 		};
-		this.sendResponse(response);
+
+		this.sendRingRdbDapMessage(scopesRequest);
+		return;
+
 	}
 
 	protected async writeMemoryRequest(response: DebugProtocol.WriteMemoryResponse, { data, memoryReference, offset = 0 }: DebugProtocol.WriteMemoryArguments) {
@@ -787,39 +632,16 @@ export class MockDebugSession extends LoggingDebugSession {
 
 		console.log("variablesRequest args:", args);
 
-		if (true) {
-			const variablesRequest: DebugProtocol.VariablesRequest = {
-				type: 'request',
-				seq: response.request_seq,
-				command: 'variables',
-				arguments: args,
-			};
+		const variablesRequest: DebugProtocol.VariablesRequest = {
+			type: 'request',
+			seq: response.request_seq,
+			command: 'variables',
+			arguments: args,
+		};
 
-			this.sendRingMessage(variablesRequest);
-			return;
-		}
+		this.sendRingRdbDapMessage(variablesRequest);
+		return;
 
-		// let vs: RuntimeVariable[] = [];
-
-		// const v = this._variableHandles.get(args.variablesReference);
-		// if (v === 'locals') {
-		// 	vs = this._runtime.getLocalVariables();
-		// } else if (v === 'globals') {
-		// 	if (request) {
-		// 		this._cancellationTokens.set(request.seq, false);
-		// 		vs = await this._runtime.getGlobalVariables(() => !!this._cancellationTokens.get(request.seq));
-		// 		this._cancellationTokens.delete(request.seq);
-		// 	} else {
-		// 		vs = await this._runtime.getGlobalVariables();
-		// 	}
-		// } else if (v && Array.isArray(v.value)) {
-		// 	vs = v.value;
-		// }
-
-		// response.body = {
-		// 	variables: vs.map(v => this.convertFromRuntime(v))
-		// };
-		// this.sendResponse(response);
 	}
 
 	protected setVariableRequest(response: DebugProtocol.SetVariableResponse, args: DebugProtocol.SetVariableArguments): void {
@@ -846,20 +668,15 @@ export class MockDebugSession extends LoggingDebugSession {
 	protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
 		console.log("continueRequest args:", args);
 
-		if (true) {
-			const continueRequest: DebugProtocol.ContinueRequest = {
-				type: 'request',
-				seq: response.request_seq,
-				command: 'continue',
-				arguments: args
-			};
+		const continueRequest: DebugProtocol.ContinueRequest = {
+			type: 'request',
+			seq: response.request_seq,
+			command: 'continue',
+			arguments: args
+		};
 
-			this.sendRingMessage(continueRequest);
-			return;
-		}
-
-		this._runtime.continue(false);
-		this.sendResponse(response);
+		this.sendRingRdbDapMessage(continueRequest);
+		return;
 	}
 
 	protected reverseContinueRequest(response: DebugProtocol.ReverseContinueResponse, args: DebugProtocol.ReverseContinueArguments): void {
@@ -871,19 +688,15 @@ export class MockDebugSession extends LoggingDebugSession {
 	protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
 		console.log("nextRequest args:", args);
 
-		if (true) {
-			const nextRequest: DebugProtocol.NextRequest = {
-				type: 'request',
-				seq: response.request_seq,
-				command: 'next',
-				arguments: args
-			};
+		const nextRequest: DebugProtocol.NextRequest = {
+			type: 'request',
+			seq: response.request_seq,
+			command: 'next',
+			arguments: args
+		};
 
-			this.sendRingMessage(nextRequest);
-			return;
-		}
-		this._runtime.step(args.granularity === 'instruction', false);
-		this.sendResponse(response);
+		this.sendRingRdbDapMessage(nextRequest);
+		return;
 	}
 
 	protected stepBackRequest(response: DebugProtocol.StepBackResponse, args: DebugProtocol.StepBackArguments): void {
@@ -906,39 +719,29 @@ export class MockDebugSession extends LoggingDebugSession {
 	protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {
 		console.log("stepInRequest args:", args);
 
-		if (true) {
-			const stepInRequest: DebugProtocol.StepInRequest = {
-				type: 'request',
-				seq: response.request_seq,
-				command: 'stepIn',
-				arguments: args
-			};
+		const stepInRequest: DebugProtocol.StepInRequest = {
+			type: 'request',
+			seq: response.request_seq,
+			command: 'stepIn',
+			arguments: args
+		};
 
-			this.sendRingMessage(stepInRequest);
-			return;
-		}
-
-		this._runtime.stepIn(args.targetId);
-		this.sendResponse(response);
+		this.sendRingRdbDapMessage(stepInRequest);
+		return;
 	}
 
 	protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments): void {
 		console.log("stepOutRequest args:", args);
 
-		if (true) {
-			const stepOutRequest: DebugProtocol.StepOutRequest = {
-				type: 'request',
-				seq: response.request_seq,
-				command: 'stepOut',
-				arguments: args
-			};
+		const stepOutRequest: DebugProtocol.StepOutRequest = {
+			type: 'request',
+			seq: response.request_seq,
+			command: 'stepOut',
+			arguments: args
+		};
 
-			this.sendRingMessage(stepOutRequest);
-			return;
-		}
-
-		this._runtime.stepOut();
-		this.sendResponse(response);
+		this.sendRingRdbDapMessage(stepOutRequest);
+		return;
 	}
 
 	protected async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): Promise<void> {
@@ -1310,9 +1113,6 @@ export class MockDebugSession extends LoggingDebugSession {
 		return dapVariable;
 	}
 
-	private formatAddress(x: number, pad = 8) {
-		return 'mem' + (this._addressesInHex ? '0x' + x.toString(16).padStart(8, '0') : x.toString(10));
-	}
 
 	private formatNumber(x: number) {
 		return this._valuesInHex ? '0x' + x.toString(16) : x.toString(10);
