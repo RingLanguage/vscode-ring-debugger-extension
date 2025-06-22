@@ -1,7 +1,7 @@
 {
   "name": "ring-debugger",
   "displayName": "Ring Debugger",
-  "version": "0.0.4",
+  "version": "0.0.7",
   "publisher": "RingLanguage",
   "description": "Ring-Language debug adapters for VS Code.",
   "author": {
@@ -16,6 +16,7 @@
   },
   "icon": "images/ring-debugger-icon.png",
   "categories": [
+    "Programming Languages",
     "Debuggers"
   ],
   "private": true,
@@ -78,23 +79,23 @@
       "editor/title/run": [
         {
           "command": "extension.ring-debugger.runEditorContents",
-          "when": "resourceLangId == markdown",
+          "when": "resourceLangId == ring",
           "group": "navigation@1"
         },
         {
           "command": "extension.ring-debugger.debugEditorContents",
-          "when": "resourceLangId == markdown",
+          "when": "resourceLangId == ring",
           "group": "navigation@2"
         }
       ],
       "commandPalette": [
         {
           "command": "extension.ring-debugger.debugEditorContents",
-          "when": "resourceLangId == markdown"
+          "when": "resourceLangId == ring"
         },
         {
           "command": "extension.ring-debugger.runEditorContents",
-          "when": "resourceLangId == markdown"
+          "when": "resourceLangId == ring"
         }
       ],
       "debug/variables/context": [
@@ -108,14 +109,14 @@
       {
         "command": "extension.ring-debugger.debugEditorContents",
         "title": "Debug File",
-        "category": "Mock Debug",
+        "category": "Ring Debug",
         "enablement": "!inDebugMode",
         "icon": "$(debug-alt)"
       },
       {
         "command": "extension.ring-debugger.runEditorContents",
         "title": "Run File",
-        "category": "Mock Debug",
+        "category": "Ring Debug",
         "enablement": "!inDebugMode",
         "icon": "$(play)"
       },
@@ -126,7 +127,7 @@
     ],
     "breakpoints": [
       {
-        "language": "markdown"
+        "language": "ring"
       }
     ],
     "debuggers": [
@@ -149,7 +150,7 @@
                 "description": "Absolute path to a text file.",
                 "default": "${workspaceFolder}/${command:AskForProgramName}"
               },
-              "stopOnEntry": {
+              "stopAtEntry": {
                 "type": "boolean",
                 "description": "Automatically stop after launch.",
                 "default": true
@@ -185,7 +186,7 @@
                 "description": "Absolute path to a text file.",
                 "default": "${workspaceFolder}/${command:AskForProgramName}"
               },
-              "stopOnEntry": {
+              "stopAtEntry": {
                 "type": "boolean",
                 "description": "Automatically stop after attach.",
                 "default": true
@@ -218,7 +219,7 @@
             "request": "launch",
             "name": "Ask for file name",
             "program": "${workspaceFolder}/${command:AskForProgramName}",
-            "stopOnEntry": true
+            "stopAtEntry": true
           }
         ],
         "configurationSnippets": [
@@ -230,7 +231,7 @@
               "request": "launch",
               "name": "Ask for file name",
               "program": "^\"\\${workspaceFolder}/\\${command:AskForProgramName}\"",
-              "stopOnEntry": true
+              "stopAtEntry": true
             }
           }
         ],

@@ -1,34 +1,37 @@
 # Ring Debugger
 
-This is a starter sample for developing VS Code debug adapters.
+## 中文描述
+### 概述
+`Ring Debugger` 是由 `RingLanguage` 发布的一款 VS Code 扩展，为 Ring 语言提供调试适配器。该扩展支持多根工作区，方便开发者对 Ring 语言代码进行调试工作。
 
-**Mock Debug** simulates a debug adapter for Visual Studio Code.
-It supports *step*, *continue*, *breakpoints*, *exceptions*, and
-*variable access* but it is not connected to any real debugger.
+### 安装要求
+- VS Code 版本需不低于 `1.66.0`。
 
-The sample is meant as an educational piece showing how to implement a debug
-adapter for VS Code. It can be used as a starting point for developing a real adapter.
+### 安装步骤
+1. 打开 VS Code。
+2. 打开扩展市场。
+3. 搜索 `Ring Debugger` 并安装。
 
-More information about how to develop a new debug adapter can be found
-[here](https://code.visualstudio.com/docs/extensions/example-debuggers).
+### 使用方法
+1. 打开一个 Ring 语言文件。
+2. 通过编辑器标题栏的 “Run/Debug” 按钮或命令面板选择 `Debug File` 或 `Run File` 命令。
+3. 在调试配置中设置必要的参数，如程序路径等。
 
-## Using Mock Debug
 
-* Install the **Mock Debug** extension in VS Code.
-* Create a new 'program' file `readme.md` and enter several lines of arbitrary text.
-* Switch to the debug viewlet and press the gear dropdown.
-* Select the debug environment "Mock Debug".
-* Press the green 'play' button to start debugging.
 
-You can now 'step through' the `readme.md` file, set and hit breakpoints, and run into exceptions (if the word exception appears in a line).
+## English Description
+### Overview
+`Ring Debugger` is a VS Code extension published by `RingLanguage`, providing debug adapters for the Ring language. This extension supports multi-root workspaces, facilitating developers in debugging Ring language code.
 
-![Mock Debug](images/mock-debug.gif)
+### Installation Requirements
+- VS Code version must be no lower than `1.66.0`.
 
-## Build and Run
+### Installation Steps
+1. Open VS Code.
+2. Open the Extension Marketplace.
+3. Search for `Ring Debugger` and install it.
 
-* Clone the project [https://github.com/Microsoft/vscode-mock-debug.git](https://github.com/Microsoft/vscode-mock-debug.git)
-* Open the project folder in VS Code.
-* Press `F5` to build and launch Mock Debug in another VS Code window.
-* In the explorer view of the new window open the 'program' file `readme.md`
-* Set some breakpoints
-* From the editor's "Run and Debug" toolbar dropdown menu select "Debug File"
+### Usage
+1. Open a Ring language file.
+2. Select the `Debug File` or `Run File` command via the “Run/Debug” button in the editor title bar or the command palette.
+3. Set the necessary parameters in the debug configuration, such as the program path.
