@@ -1,18 +1,17 @@
-/*---------------------------------------------------------
- * Copyright (C) Microsoft Corporation. All rights reserved.
- *--------------------------------------------------------*/
 /*
- * activateMockDebug.ts containes the shared extension code that can be executed both in node.js and the browser.
+ * activateRingDebug.ts containes the shared extension code that can be executed both in node.js and the browser.
  */
 
 'use strict';
 
 import * as vscode from 'vscode';
 import { WorkspaceFolder, DebugConfiguration, ProviderResult, CancellationToken } from 'vscode';
-import { MockDebugSession } from './mockDebug';
-import { FileAccessor } from './mockRuntime';
+import { RingDebugSession } from './ringDebug';
+import { FileAccessor } from './ringRuntime';
 
-export function activateMockDebug(context: vscode.ExtensionContext, factory?: vscode.DebugAdapterDescriptorFactory) {
+const RING_DEBUGGER_TYPE = 'ring-debugger';
+
+export function activateRingDebug(context: vscode.ExtensionContext, factory?: vscode.DebugAdapterDescriptorFactory) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('extension.ring-debugger.runEditorContents', (resource: vscode.Uri) => {
@@ -22,7 +21,7 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 			}
 			if (targetResource) {
 				vscode.debug.startDebugging(undefined, {
-					type: 'ring-debugger',
+					type: RING_DEBUGGER_TYPE,
 					name: 'Run File',
 					request: 'launch',
 					program: targetResource.fsPath
@@ -38,11 +37,11 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 			}
 			if (targetResource) {
 				vscode.debug.startDebugging(undefined, {
-					type: 'ring-debugger',
+					type: RING_DEBUGGER_TYPE,
 					name: 'Debug File',
 					request: 'launch',
 					program: targetResource.fsPath,
-					stopOnEntry: true
+					stopAtEntry: true
 				});
 			}
 		}),
@@ -61,12 +60,12 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 		});
 	}));
 
-	// register a configuration provider for 'mock' debug type
-	const provider = new MockConfigurationProvider();
-	context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('ring-debugger', provider));
+	// register a configuration provider for 'ring-debugger' debug type
+	const provider = new RingConfigurationProvider();
+	context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider(RING_DEBUGGER_TYPE, provider));
 
-	// register a dynamic configuration provider for 'mock' debug type
-	context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('ring-debugger', {
+	// register a dynamic configuration provider for 'ring-debugger' debug type
+	context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider(RING_DEBUGGER_TYPE, {
 		provideDebugConfigurations(folder: WorkspaceFolder | undefined): ProviderResult<DebugConfiguration[]> {
 			return [
 				{
@@ -94,7 +93,7 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 	if (!factory) {
 		factory = new InlineDebugAdapterFactory();
 	}
-	context.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory('ring-debugger', factory));
+	context.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory(RING_DEBUGGER_TYPE, factory));
 	if ('dispose' in factory) {
 		context.subscriptions.push(factory);
 	}
@@ -152,7 +151,7 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 	}));
 }
 
-class MockConfigurationProvider implements vscode.DebugConfigurationProvider {
+class RingConfigurationProvider implements vscode.DebugConfigurationProvider {
 
 	/**
 	 * Massage a debug configuration just before a debug session is being launched,
@@ -164,11 +163,11 @@ class MockConfigurationProvider implements vscode.DebugConfigurationProvider {
 		if (!config.type && !config.request && !config.name) {
 			const editor = vscode.window.activeTextEditor;
 			if (editor && editor.document.languageId === 'markdown') {
-				config.type = 'ring-debugger';
+				config.type = RING_DEBUGGER_TYPE;
 				config.name = 'Launch';
 				config.request = 'launch';
 				config.program = '${file}';
-				config.stopOnEntry = true;
+				config.stopAtEntry = true;
 			}
 		}
 
@@ -210,6 +209,6 @@ function pathToUri(path: string) {
 class InlineDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
 
 	createDebugAdapterDescriptor(_session: vscode.DebugSession): ProviderResult<vscode.DebugAdapterDescriptor> {
-		return new vscode.DebugAdapterInlineImplementation(new MockDebugSession(workspaceFileAccessor));
+		return new vscode.DebugAdapterInlineImplementation(new RingDebugSession(workspaceFileAccessor));
 	}
 }

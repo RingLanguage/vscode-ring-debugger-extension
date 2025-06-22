@@ -1,13 +1,10 @@
-/*---------------------------------------------------------
- * Copyright (C) Microsoft Corporation. All rights reserved.
- *--------------------------------------------------------*/
 /*
- * mockDebug.ts implements the Debug Adapter that "adapts" or translates the Debug Adapter Protocol (DAP) used by the client (e.g. VS Code)
- * into requests and events of the real "execution engine" or "debugger" (here: class MockRuntime).
+ * ringDebug.ts implements the Debug Adapter that "adapts" or translates the Debug Adapter Protocol (DAP) used by the client (e.g. VS Code)
+ * into requests and events of the real "execution engine" or "debugger" (here: class RingRuntime).
  * When implementing your own debugger extension for VS Code, most of the work will go into the Debug Adapter.
  * Since the Debug Adapter is independent from VS Code, it can be used in any client (IDE) supporting the Debug Adapter Protocol.
  *
- * The most important class of the Debug Adapter is the MockDebugSession which implements many DAP requests by talking to the MockRuntime.
+ * The most important class of the Debug Adapter is the RingDebugSession which implements many DAP requests by talking to the RingRuntime.
  */
 
 import {
@@ -19,22 +16,22 @@ import {
 } from '@vscode/debugadapter';
 import { DebugProtocol } from '@vscode/debugprotocol';
 import { basename } from 'path-browserify';
-import { MockRuntime, IRuntimeBreakpoint, FileAccessor, RuntimeVariable, timeout, IRuntimeVariableType } from './mockRuntime';
+import { RingRuntime, IRuntimeBreakpoint, FileAccessor, RuntimeVariable, timeout, IRuntimeVariableType } from './ringRuntime';
 import { Subject } from 'await-notify';
 import * as base64 from 'base64-js';
 import { spawn, ChildProcess } from 'child_process';
 
 /**
- * This interface describes the mock-debug specific launch attributes
+ * This interface describes the ring-debug specific launch attributes
  * (which are not part of the Debug Adapter Protocol).
- * The schema for these attributes lives in the package.json of the mock-debug extension.
+ * The schema for these attributes lives in the package.json of the ring-debug extension.
  * The interface should always match this schema.
  */
 interface ILaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
 	/** An absolute path to the "program" to debug. */
 	program: string;
 	/** Automatically stop target after launch. If not specified, target does not stop. */
-	stopOnEntry?: boolean;
+	stopAtEntry?: boolean;
 	/** enable logging the Debug Adapter Protocol */
 	trace?: boolean;
 	/** run without debugging */
@@ -46,13 +43,13 @@ interface ILaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
 interface IAttachRequestArguments extends ILaunchRequestArguments { }
 
 
-export class MockDebugSession extends LoggingDebugSession {
+export class RingDebugSession extends LoggingDebugSession {
 
 	// we don't support multiple threads, so we can use a hardcoded ID for the default thread
 	private static threadID = 1;
 
-	// a Mock runtime (or debugger)
-	private _runtime: MockRuntime;
+	// a ring runtime (or debugger)
+	private _runtime: RingRuntime;
 
 	private _variableHandles = new Handles<'locals' | 'globals' | RuntimeVariable>();
 
@@ -74,8 +71,6 @@ export class MockDebugSession extends LoggingDebugSession {
 	// 展示 extension 和 rdb 交换的详细日志
 	private _showDebugRdbLog = false;
 
-	// 
-	// private _requestSeqMap: Map<number, number> = new Map<number, number>();
 
 
 	/**
@@ -83,42 +78,42 @@ export class MockDebugSession extends LoggingDebugSession {
 	 * We configure the default implementation of a debug adapter here.
 	 */
 	public constructor(fileAccessor: FileAccessor) {
-		super("mock-debug.txt");
+		super("ring-debug.txt");
 
 		// this debugger uses zero-based lines and columns
 		this.setDebuggerLinesStartAt1(false);
 		this.setDebuggerColumnsStartAt1(false);
 
-		this._runtime = new MockRuntime(fileAccessor);
+		this._runtime = new RingRuntime(fileAccessor);
 
 		// setup event handlers
-		this._runtime.on('stopOnEntry', () => {
-			console.log('stopOnEntry');
-			this.sendEvent(new StoppedEvent('entry', MockDebugSession.threadID));
-			this.sendEvent(new StoppedEvent('entry', MockDebugSession.threadID + 1));
+		this._runtime.on('stopAtEntry', () => {
+			console.log('stopAtEntry');
+			this.sendEvent(new StoppedEvent('entry', RingDebugSession.threadID));
+			this.sendEvent(new StoppedEvent('entry', RingDebugSession.threadID + 1));
 		});
 		this._runtime.on('stopOnStep', () => {
 			console.log('stopOnStep');
-			this.sendEvent(new StoppedEvent('step', MockDebugSession.threadID));
+			this.sendEvent(new StoppedEvent('step', RingDebugSession.threadID));
 		});
 		this._runtime.on('stopOnBreakpoint', () => {
 			console.log('stopOnBreakpoint');
-			this.sendEvent(new StoppedEvent('breakpoint', MockDebugSession.threadID));
+			this.sendEvent(new StoppedEvent('breakpoint', RingDebugSession.threadID));
 		});
 		this._runtime.on('stopOnDataBreakpoint', () => {
 			console.log('stopOnDataBreakpoint');
-			this.sendEvent(new StoppedEvent('data breakpoint', MockDebugSession.threadID));
+			this.sendEvent(new StoppedEvent('data breakpoint', RingDebugSession.threadID));
 		});
 		this._runtime.on('stopOnInstructionBreakpoint', () => {
 			console.log('stopOnInstructionBreakpoint');
-			this.sendEvent(new StoppedEvent('instruction breakpoint', MockDebugSession.threadID));
+			this.sendEvent(new StoppedEvent('instruction breakpoint', RingDebugSession.threadID));
 		});
 		this._runtime.on('stopOnException', (exception) => {
 			console.log('stopOnException');
 			if (exception) {
-				this.sendEvent(new StoppedEvent(`exception(${exception})`, MockDebugSession.threadID));
+				this.sendEvent(new StoppedEvent(`exception(${exception})`, RingDebugSession.threadID));
 			} else {
-				this.sendEvent(new StoppedEvent('exception', MockDebugSession.threadID));
+				this.sendEvent(new StoppedEvent('exception', RingDebugSession.threadID));
 			}
 		});
 		this._runtime.on('breakpointValidated', (bp: IRuntimeBreakpoint) => {
@@ -152,10 +147,6 @@ export class MockDebugSession extends LoggingDebugSession {
 		});
 	}
 
-	/**
-	 * The 'initialize' request is the first request called by the frontend
-	 * to interrogate the features the debug adapter provides.
-	 */
 	protected initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
 
 		if (args.supportsProgressReporting) {
@@ -198,9 +189,7 @@ export class MockDebugSession extends LoggingDebugSession {
 		response.body.supportsExceptionFilterOptions = true;
 
 
-
-		response.body.exceptionBreakpointFilters = [
-		];
+		response.body.exceptionBreakpointFilters = [];
 
 		// make VS Code send exceptionInfo request
 		response.body.supportsExceptionInfoRequest = true;
@@ -333,7 +322,7 @@ export class MockDebugSession extends LoggingDebugSession {
 				} else {
 					this.sendEvent(new OutputEvent(`ring process exited with code ${event.body.exitCode}\n`, 'console'));
 				}
-	
+
 				this.sendEvent(new TerminatedEvent());
 
 			} else if (ringEvent.event === 'stopped') {

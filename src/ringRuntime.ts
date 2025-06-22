@@ -1,7 +1,3 @@
-/*---------------------------------------------------------
- * Copyright (C) Microsoft Corporation. All rights reserved.
- *--------------------------------------------------------*/
-
 import { EventEmitter } from 'events';
 
 export interface FileAccessor {
@@ -21,19 +17,7 @@ interface IRuntimeStepInTargets {
 	label: string;
 }
 
-interface IRuntimeStackFrame {
-	index: number;
-	name: string;
-	file: string;
-	line: number;
-	column?: number;
-	instruction?: number;
-}
 
-interface IRuntimeStack {
-	count: number;
-	frames: IRuntimeStackFrame[];
-}
 
 interface RuntimeDisassembledInstruction {
 	address: number;
@@ -89,21 +73,21 @@ export function timeout(ms: number) {
 }
 
 /**
- * A Mock runtime with minimal debugger functionality.
- * MockRuntime is a hypothetical (aka "Mock") "execution engine with debugging support":
+ * A Ring runtime with minimal debugger functionality.
+ * RingRuntime is a hypothetical (aka "Ring") "execution engine with debugging support":
  * it takes a Markdown (*.md) file and "executes" it by "running" through the text lines
  * and searching for "command" patterns that trigger some debugger related functionality (e.g. exceptions).
  * When it finds a command it typically emits an event.
  * The runtime can not only run through the whole file but also executes one line at a time
  * and stops on lines for which a breakpoint has been registered. This functionality is the
  * core of the "debugging support".
- * Since the MockRuntime is completely independent from VS Code or the Debug Adapter Protocol,
+ * Since the RingRuntime is completely independent from VS Code or the Debug Adapter Protocol,
  * it can be viewed as a simplified representation of a real "execution engine" (e.g. node.js)
  * or debugger (e.g. gdb).
  * When implementing your own debugger extension for VS Code, you probably don't need this
  * class because you can rely on some existing debugger or runtime.
  */
-export class MockRuntime extends EventEmitter {
+export class RingRuntime extends EventEmitter {
 
 	// the initial (and one and only) file we are 'debugging'
 	private _sourceFile: string = '';
@@ -156,16 +140,16 @@ export class MockRuntime extends EventEmitter {
 	/**
 	 * Start executing the given program.
 	 */
-	public async start(program: string, stopOnEntry: boolean, debug: boolean): Promise<void> {
+	public async start(program: string, stopAtEntry: boolean, debug: boolean): Promise<void> {
 
 		await this.loadSource(this.normalizePathAndCasing(program));
 
 		if (debug) {
 			await this.verifyBreakpoints(this._sourceFile);
 
-			if (stopOnEntry) {
-				console.log('stopOnEntry ------- start');
-				this.findNextStatement(false, 'stopOnEntry');
+			if (stopAtEntry) {
+				console.log('stopAtEntry ------- start');
+				this.findNextStatement(false, 'stopAtEntry');
 			} else {
 				// we just start to run until we hit a breakpoint, an exception, or the end of the program
 				this.continue(false);
@@ -219,7 +203,7 @@ export class MockRuntime extends EventEmitter {
 				// no more lines: stop at first line
 				this.currentLine = 0;
 				this.currentColumn = undefined;
-				this.sendEvent('stopOnEntry');
+				this.sendEvent('stopAtEntry');
 				return true;
 			}
 		} else {
@@ -236,7 +220,7 @@ export class MockRuntime extends EventEmitter {
 	}
 
 	/**
-	 * "Step into" for Mock debug means: go to next character
+	 * "Step into" for Ring debug means: go to next character
 	 */
 	public stepIn(targetId: number | undefined) {
 		if (typeof targetId === 'number') {
@@ -255,7 +239,7 @@ export class MockRuntime extends EventEmitter {
 	}
 
 	/**
-	 * "Step out" for Mock debug means: go to previous character
+	 * "Step out" for Ring debug means: go to previous character
 	 */
 	public stepOut() {
 		if (typeof this.currentColumn === 'number') {
@@ -288,59 +272,6 @@ export class MockRuntime extends EventEmitter {
 		});
 	}
 
-	/**
-	 * Returns a fake 'stacktrace' where every 'stackframe' is a word from the current line.
-	 */
-	// TODO: 研究这个函数
-	public stack(startFrame: number, endFrame: number): IRuntimeStack {
-
-		// const line = this.getLine();
-		// const words = this.getWords(this.currentLine, line);
-		// words.push({ name: 'BOTTOM', line: -1, index: -1 });	// add a sentinel so that the stack is never empty...
-
-		// // if the line contains the word 'disassembly' we support to "disassemble" the line by adding an 'instruction' property to the stackframe
-		// const instruction = line.indexOf('disassembly') >= 0 ? this.instruction : undefined;
-
-		// const column = typeof this.currentColumn === 'number' ? this.currentColumn : undefined;
-
-		const frames: IRuntimeStackFrame[] = [
-			{index: 0, name: "test", file:"/Users/lizhenhu/Desktop/vscode-mock-debug/sampleWorkspace/function-009.ring", line:24, column: 1, instruction: 0},
-			{index: 1, name: "main", file:"/Users/lizhenhu/Desktop/vscode-mock-debug/sampleWorkspace/function-009.ring", line:62, column: 1, instruction: 0},
-		];
-
-		const result: IRuntimeStackFrame[] = [];
-
-		for (let i = startFrame; i < Math.min(endFrame, frames.length); i++) {
-			result.push(frames[i]);
-		}
-
-		return {
-			frames: result,
-			count: frames.length
-		};
-
-
-
-		// // every word of the current line becomes a stack frame.
-		// for (let i = startFrame; i < Math.min(endFrame, words.length); i++) {
-
-		// 	const stackFrame: IRuntimeStackFrame = {
-		// 		index: i,
-		// 		name: `${words[i].name}(${i})`,	// use a word of the line as the stackframe name
-		// 		file: this._sourceFile,
-		// 		line: this.currentLine,
-		// 		column: column, // words[i].index
-		// 		instruction: instruction ? instruction + i : 0
-		// 	};
-
-		// 	frames.push(stackFrame);
-		// }
-
-		// return {
-		// 	frames: frames,
-		// 	count: words.length
-		// };
-	}
 
 	/*
 	 * Determine possible column breakpoint positions for the given line.
